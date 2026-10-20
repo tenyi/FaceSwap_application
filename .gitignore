@@ -140,3 +140,12 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# MCode session artefacts
+.mavis/
+
+# Downloaded cartoon dataset, see README "模型下載"
+cartoon_data/
+
+# Local demo source photo: real person's likeness, kept out of the public repo
+images/demo_face_crop.png

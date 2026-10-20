@@ -6,12 +6,14 @@ from models import ResnetGenerator
 import argparse
 from utils import Preprocess
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--photo_path', type=str, help='input photo path')
-parser.add_argument('--save_path', type=str, help='cartoon save path')
-args = parser.parse_args()
 
-#os.makedirs(os.path.dirname(args.save_path), exist_ok=True)
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--photo_path', type=str, help='input photo path')
+    parser.add_argument('--save_path', type=str, help='cartoon save path')
+    parser.add_argument('--no-preview', action='store_true',
+                        help='do not open the result preview window')
+    return parser.parse_args()
 
 class Photo2Cartoon:
     def __init__(self):
@@ -54,13 +56,14 @@ class Photo2Cartoon:
 
 
 if __name__ == '__main__':
+    args = parse_args()
     img = cv2.cvtColor(cv2.imread(args.photo_path), cv2.COLOR_BGR2RGB)
     c2p = Photo2Cartoon()
     cartoon = c2p.inference(img)
     if cartoon is not None:
         cv2.imwrite(args.save_path, cartoon)
         print('Cartoon portrait has been saved successfully!')
-    
-#####################################################################
-    cv2.imshow("cartoon",cartoon)
-    cv2.waitKey(0)
+
+        if not args.no_preview:
+            cv2.imshow("cartoon", cartoon)
+            cv2.waitKey(0)

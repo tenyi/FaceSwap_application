@@ -7,7 +7,7 @@ class FaceFeatures(object):
     def __init__(self, weights_path, device):
         self.device = device
         self.model = MobileFaceNet(512).to(device)
-        self.model.load_state_dict(torch.load(weights_path))
+        self.model.load_state_dict(torch.load(weights_path, map_location=device, weights_only=False))
         self.model.eval()
 
     def infer(self, batch_tensor):

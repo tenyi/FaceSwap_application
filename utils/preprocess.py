@@ -4,7 +4,9 @@ import numpy as np
 
 
 class Preprocess:
-    def __init__(self, device='cpu', detector='dlib'):
+    def __init__(self, device='cpu', detector='sfd'):
+        # device = 'cpu' or 'cuda'
+        # detector = 'sfd' (pure PyTorch, no dlib needed) or 'dlib'
         self.detect = FaceDetect(device, detector)  # device = 'cpu' or 'cuda', detector = 'dlib' or 'sfd'
         self.segment = FaceSeg()
 

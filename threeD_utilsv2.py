@@ -2,7 +2,6 @@ import numpy as np
 import os
 from skimage.transform import estimate_transform, warp
 import cv2
-from cv2 import cv2 as cv2 
 from predictor import PosPrediction
 import matplotlib.pyplot as plt
 
@@ -152,15 +151,15 @@ class threetool:
         x, y, z = np.deg2rad(angles[0]), np.deg2rad(angles[1]), np.deg2rad(angles[2])
         # x
         Rx=np.array([[1,              0,                0],
-                    [0, np.math.cos(x),  -np.math.sin(x)],
-                    [0, np.math.sin(x),   np.math.cos(x)]])
+                    [0, np.cos(x),  -np.sin(x)],
+                    [0, np.sin(x),   np.cos(x)]])
         # y
-        Ry=np.array([[ np.math.cos(y), 0, np.math.sin(y)],
+        Ry=np.array([[ np.cos(y), 0, np.sin(y)],
                     [              0, 1,              0],
-                    [-np.math.sin(y), 0, np.math.cos(y)]])
+                    [-np.sin(y), 0, np.cos(y)]])
         # z
-        Rz=np.array([[np.math.cos(z), -np.math.sin(z), 0],
-                    [np.math.sin(z),  np.math.cos(z), 0],
+        Rz=np.array([[np.cos(z), -np.sin(z), 0],
+                    [np.sin(z),  np.cos(z), 0],
                     [             0,               0, 1]])
 
         R=Rz.dot(Ry.dot(Rx))

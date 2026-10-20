@@ -2,7 +2,7 @@ import os
 import cv2
 import torch
 import numpy as np
-from scipy import misc
+from PIL import Image
 
 
 def load_test_data(image_path, size=256):
@@ -41,7 +41,10 @@ def inverse_transform(images):
 
 
 def imsave(images, size, path):
-    return misc.imsave(path, merge(images, size))
+    # scipy.misc.imsave was removed in SciPy 1.3; use Pillow instead.
+    merged = merge(images, size)
+    img = (np.clip(merged, 0, 1) * 255).astype(np.uint8)
+    Image.fromarray(img).save(path)
 
 
 def merge(images, size):

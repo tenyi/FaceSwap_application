@@ -1,32 +1,30 @@
 import os
 import cv2
 import numpy as np
-import tensorflow as tf
-from tensorflow.python.platform import gfile
+import tensorflow.compat.v1 as tf
 
+# The released `seg_model_384.pb` is a frozen TensorFlow 1.x graph.
+# TF2 removed the v1 session API, so we drive the graph through compat.v1.
+tf.disable_eager_execution()
 
 curPath = os.path.abspath(os.path.dirname(__file__))
 
 
 class FaceSeg:
     def __init__(self, model_path=os.path.join(curPath, 'seg_model_384.pb')):
-        config = tf.ConfigProto()
+        config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
         self._graph = tf.Graph()
-        self._sess = tf.Session(config=config, graph=self._graph)
+        with self._graph.as_default():
+            graph_def = tf.GraphDef()
+            with tf.io.gfile.GFile(model_path, 'rb') as f:
+                graph_def.ParseFromString(f.read())
+            tf.import_graph_def(graph_def, name='')
+        self._sess = tf.compat.v1.Session(config=config, graph=self._graph)
 
         self.pb_file_path = model_path
-        self._restore_from_pb()
         self.input_op = self._sess.graph.get_tensor_by_name('input_1:0')
         self.output_op = self._sess.graph.get_tensor_by_name('sigmoid/Sigmoid:0')
-
-    def _restore_from_pb(self):
-        with self._sess.as_default():
-            with self._graph.as_default():
-                with gfile.FastGFile(self.pb_file_path, 'rb') as f:
-                    graph_def = tf.GraphDef()
-                    graph_def.ParseFromString(f.read())
-                    tf.import_graph_def(graph_def, name='')
 
     def input_transform(self, image):
         image = cv2.resize(image, (384, 384), interpolation=cv2.INTER_AREA)

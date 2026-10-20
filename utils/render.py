@@ -82,41 +82,145 @@ def get_point_weight(point, tri_points):
     return w0, w1, w2
 
 
-def render_texture(vertices, colors, triangles, h, w, c = 3):
+def _barycentric_weights(p0, p1, p2, u, v):
+    '''Barycentric weights of the pixel inside the triangle.
+
+    Args:
+        p0, p1, p2: (N, 2) arrays with the triangle vertices.
+        u, v: (N,) arrays with the pixel coordinates.
+
+    Returns:
+        (w0, w1, w2): (N,) arrays, the weight of every vertex.
+    '''
+    a = p2 - p0
+    b = p1 - p0
+    c = np.stack([u - p0[:, 0], v - p0[:, 1]], axis=1)
+
+    dot_aa = a[:, 0] * a[:, 0] + a[:, 1] * a[:, 1]
+    dot_ab = a[:, 0] * b[:, 0] + a[:, 1] * b[:, 1]
+    dot_ac = a[:, 0] * c[:, 0] + a[:, 1] * c[:, 1]
+    dot_bb = b[:, 0] * b[:, 0] + b[:, 1] * b[:, 1]
+    dot_bc = b[:, 0] * c[:, 0] + b[:, 1] * c[:, 1]
+
+    denom = dot_aa * dot_bb - dot_ab * dot_ab
+    # Degenerate triangles keep the original behaviour (inverDeno = 0).
+    inv = np.zeros_like(denom)
+    np.divide(1.0, denom, out=inv, where=(denom != 0))
+
+    w1 = (dot_bb * dot_ac - dot_ab * dot_bc) * inv
+    w2 = (dot_aa * dot_bc - dot_ab * dot_ac) * inv
+    return 1.0 - w1 - w2, w1, w2
+
+
+def render_texture(vertices, colors, triangles, h, w, c = 3, block = 20000,
+                   shading = 'gouraud'):
     ''' render mesh by z buffer
     Args:
         vertices: 3 x nver
         colors: 3 x nver
         triangles: 3 x ntri
         h: height
-        w: width    
-    '''
-    # initial 
-    image = np.zeros((h, w, c))
+        w: width
+        shading: 'gouraud' interpolates the vertex colours inside every
+            triangle, 'flat' uses the average colour of the three vertices
+            (the behaviour of the original implementation).
 
+    This is a vectorised rewrite of the original per-triangle / per-pixel
+    Python loops.  The z-buffer semantics are kept identical: for every pixel
+    the triangle with the greatest depth wins, and ties are resolved in favour
+    of the lowest triangle index.
+    '''
+    # initial
+    image = np.zeros((h, w, c))
     depth_buffer = np.zeros([h, w]) - 999999.
+
     # triangle depth: approximate the depth to the average value of z in each vertex(v0, v1, v2), since the vertices are closed to each other
-    tri_depth = (vertices[2, triangles[0,:]] + vertices[2,triangles[1,:]] + vertices[2, triangles[2,:]])/3. 
+    tri_depth = (vertices[2, triangles[0,:]] + vertices[2,triangles[1,:]] + vertices[2, triangles[2,:]])/3.
     tri_tex = (colors[:, triangles[0,:]] + colors[:,triangles[1,:]] + colors[:, triangles[2,:]])/3.
 
-    for i in range(triangles.shape[1]):
-        tri = triangles[:, i] # 3 vertex indices
+    ntri = triangles.shape[1]
+    if ntri == 0:
+        return image
 
-        # the inner bounding box
-        umin = max(int(np.ceil(np.min(vertices[0,tri]))), 0)
-        umax = min(int(np.floor(np.max(vertices[0,tri]))), w-1)
+    # inner bounding box of every triangle (same clamping as the original loop:
+    # the lower bound is only clamped from below, the upper bound only from above)
+    vx = vertices[0, triangles]
+    vy = vertices[1, triangles]
+    umin = np.maximum(np.ceil(vx.min(axis=0)).astype(np.int64), 0)
+    umax = np.minimum(np.floor(vx.max(axis=0)).astype(np.int64), w - 1)
+    vmin = np.maximum(np.ceil(vy.min(axis=0)).astype(np.int64), 0)
+    vmax = np.minimum(np.floor(vy.max(axis=0)).astype(np.int64), h - 1)
 
-        vmin = max(int(np.ceil(np.min(vertices[1,tri]))), 0)
-        vmax = min(int(np.floor(np.max(vertices[1,tri]))), h-1)
+    p0 = vertices[:2, triangles[0]].T.astype(np.float64)
+    p1 = vertices[:2, triangles[1]].T.astype(np.float64)
+    p2 = vertices[:2, triangles[2]].T.astype(np.float64)
 
-        if umax<umin or vmax<vmin:
+    c0 = colors[:, triangles[0]].T.astype(np.float64)
+    c1 = colors[:, triangles[1]].T.astype(np.float64)
+    c2 = colors[:, triangles[2]].T.astype(np.float64)
+
+    for start in range(0, ntri, block):
+        stop = min(start + block, ntri)
+        sl = slice(start, stop)
+
+        bw = np.maximum(umax[sl] - umin[sl] + 1, 0)
+        bh = np.maximum(vmax[sl] - vmin[sl] + 1, 0)
+        counts = bw * bh
+        total = int(counts.sum())
+        if total == 0:
             continue
 
-        for u in range(umin, umax+1):
-            for v in range(vmin, vmax+1):
-                if tri_depth[i] > depth_buffer[v, u] and isPointInTri([u,v], vertices[:2, tri]): 
-                    depth_buffer[v, u] = tri_depth[i]
-                    image[v, u, :] = tri_tex[:, i]
+        tri_idx = np.repeat(np.arange(start, stop), counts)
+        offset = np.arange(total) - np.repeat(np.cumsum(counts) - counts, counts)
+        bw_rep = np.repeat(bw, counts)
+        u = np.repeat(umin[sl], counts) + offset % bw_rep
+        v = np.repeat(vmin[sl], counts) + offset // bw_rep
+
+        w0, w1, w2 = _barycentric_weights(p0[tri_idx], p1[tri_idx], p2[tri_idx],
+                                          u.astype(np.float64), v.astype(np.float64))
+        inside = (w1 >= 0) & (w2 >= 0) & (w1 + w2 < 1)
+        if not inside.any():
+            continue
+
+        # keep only the pixels that really fall inside their triangle
+        keep = np.nonzero(inside)[0]
+        tri_idx = tri_idx[keep]
+        u = u[keep]
+        v = v[keep]
+        w0 = w0[keep]
+        w1 = w1[keep]
+        w2 = w2[keep]
+
+        pix = v * w + u
+        depth = tri_depth[tri_idx]
+
+        # keep the deepest triangle for every pixel of this block
+        order = np.lexsort((-depth, pix))
+        pix_s = pix[order]
+        first = np.ones(pix_s.shape, dtype=bool)
+        first[1:] = pix_s[1:] != pix_s[:-1]
+        sel = order[first]
+
+        px = u[sel]
+        py = v[sel]
+        pdepth = depth[sel]
+        better = pdepth > depth_buffer[py, px]
+        if not better.any():
+            continue
+        px = px[better]
+        py = py[better]
+        pdepth = pdepth[better]
+        ptri = tri_idx[sel][better]
+
+        depth_buffer[py, px] = pdepth
+        if shading == 'gouraud':
+            sw0 = w0[sel][better][:, np.newaxis]
+            sw1 = w1[sel][better][:, np.newaxis]
+            sw2 = w2[sel][better][:, np.newaxis]
+            image[py, px, :] = (sw0 * c0[ptri] + sw1 * c1[ptri] + sw2 * c2[ptri])
+        else:
+            image[py, px, :] = tri_tex[:, ptri].T
+
     return image
 
 

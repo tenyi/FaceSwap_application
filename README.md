@@ -1,6 +1,6 @@
 # Face
 
-> **維護狀態說明**：原作者已停止維護，原始 `requirements.txt` 鎖定的是 2021 年的
+> **維護狀態說明**：原作者已停止維護，原始相依清單鎖定的是 2021 年的
 > Python 3.6.12 + `tensorflow-gpu==1.14.0` + `torch==1.7.0`。這三個版本都**沒有
 > Apple Silicon (arm64) 的 wheel**，在 M 系列 Mac 上無法安裝。專案本身的模型權重
 > 與資料檔是齊全的，經過相容性修正後可在現代環境正常運作（詳見下方
@@ -8,22 +8,36 @@
 
 ## 現代化安裝（實測於 macOS 26 / Apple Silicon）
 
-```bash
-# 全新 venv（會下載約 600 MB 的 torch + tensorflow）
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-modern.txt
-python QTmainV2.py
-```
-
-若系統 Python 3.11 已經裝好 torch / tensorflow，可直接沿用、免下載：
+專案使用 [uv](https://docs.astral.sh/uv/) 管理 Python 版本與相依套件。
+`pyproject.toml` 宣告相依項目，`uv.lock` 鎖定每一個確切版本，兩者都是版控的一部分。
 
 ```bash
-python3.11 -m venv --system-site-packages .venv
-source .venv/bin/activate
-pip install -r requirements-modern.txt
-python QTmainV2.py
+# 安裝（首次會下載約 600 MB 的 torch + tensorflow）
+uv sync
+
+# 執行 GUI
+uv run python QTmainV2.py
 ```
+
+`uv sync` 會建立 `.venv`，並且是**自給自足**的：所有套件都安裝在 venv 內，
+不需要 `--system-site-packages`，也不會意外用到系統 Python 裡的套件。
+
+`uv` 預設使用自己管理的 Python。若本機沒有符合 3.11 的直譯器，`uv` 會自動下載一份，
+不必另外安裝。Python 版本固定在 3.11，因為 TensorFlow 2.13 只提供 cp311 的 wheel。
+
+常用指令：
+
+```bash
+uv sync                    # 依 uv.lock 重建環境
+uv lock                    # 重新解析相依項目並更新 uv.lock
+uv lock --upgrade-package torch   # 只升級單一套件
+uv run python cartoon.py --photo_path images/photo_test.jpg \
+                         --save_path out.jpg --no-preview
+```
+
+> **不要照著原始的 requirements 清單安裝**：那份清單鎖的是 2021 年的
+> Python 3.6 + TF 1.14 + torch 1.7，三者都沒有 arm64 macOS 的 wheel，
+> 在 M 系列 Mac 上完全無法安裝。原始版本資訊保留在下方「原始相依項目」。
 
 首次執行卡通化功能時，`face_alignment` 會自動下載 SFD 人臉偵測器與 2DFAN 關鍵點
 模型（約 180 MB）到 `~/.cache/torch/hub/checkpoints/`。
@@ -71,11 +85,11 @@ PRNet 用 256×256 的 UV 貼圖重建臉部，眼球區域的拓撲相當粗糙
 
 ```bash
 # 影片偵測框 + 卡通化影片（輸出到 ./videos/）
-python UseVideo.py input.mp4
+uv run python UseVideo.py input.mp4
 
 # 單張照片卡通化
-python cartoon.py --photo_path images/photo_test.jpg \
-                  --save_path out.jpg --no-preview
+uv run python cartoon.py --photo_path images/photo_test.jpg \
+                         --save_path out.jpg --no-preview
 ```
 
 GUI 的「選擇影片 / 選擇相片 / 執行換臉」走同一條路徑，處理時會在狀態列顯示
@@ -135,26 +149,38 @@ https://drive.google.com/file/d/1UoE-XuW1SDLUjZmJPkIZ1MLxvQFgmTFH/view
 https://github.com/YadiraF/PRNet/tree/master/Data
 
 ## 安裝環境
+
+由 `pyproject.toml` 宣告、`uv.lock` 鎖定：
+
+| 套件 | 版本 | 說明 |
+| --- | --- | --- |
+| Python | 3.11 | TF 2.13 只提供 cp311 wheel |
+| torch / torchvision | 2.7.0 / 0.22.0 | 必須成對升級，否則 `operator torchvision::nms does not exist` |
+| tensorflow | 2.13.0 | macOS arm64 實際安裝的是 `tensorflow-macos`；Linux x86_64 的 wheel 已內建 CUDA |
+| opencv-python | 4.11.0.86 | |
+| face-alignment | 1.4.1 | 首次執行會下載 SFD 與 2DFAN 權重 |
+| numpy | 1.26.4 | |
+| scikit-image / scipy | 0.23.2 / 1.12.0 | |
+| matplotlib / pillow | 3.10.9 / 11.2.1 | |
+| PyQt5 | 5.15.11 | GUI 所需 |
+
+### 原始相依項目
+
+原作者的 `requirements.txt` 鎖定的是 2021 年的組合，僅供對照，**不要安裝**：
+
 * **python==3.6.12**
-
 * **pencv-python==4.1.0.25**
-
 * **PyQt5==5.15.4**
-
 * **matplotlib==3.3.3**
-
 * **face-alignment==1.1.1**
-
 * **tensorflow-gpu==1.14.0**
-
 * **torchvision==0.8.1**
-
 * **dlib==19.21.0**
 
 ## 執行檔案
 
 ```
-python QTmainV2.py
+uv run python QTmainV2.py
 ```
 
 ### 初始畫面

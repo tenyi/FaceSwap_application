@@ -1,0 +1,59 @@
+[project]
+name = "faceswap-application"
+version = "0.1.0"
+description = "PRNet face swap and photo2cartoon portrait styliser, originally by YadiraF and minivision-ai"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+
+# Only what the code actually imports. The old requirements.txt pinned a 2021
+# stack (Python 3.6 + TF 1.14 + torch 1.7) that has no arm64 macOS wheels and
+# cannot be installed on an Apple Silicon machine at all.
+#
+# The upper bounds are the versions this project has actually been verified
+# against, not arbitrary caps. Upgrading face-alignment past 1.4 or OpenCV past
+# 4.11 changes the face detection and rendering path, so that belongs in its
+# own change with its own verification.
+dependencies = [
+    "numpy>=1.26,<2.0",
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+    # TensorFlow 2.13 ships a different distribution per platform. The
+    # `tensorflow` name itself is a 0 MB meta package on arm64 macOS, Linux
+    # arm64 and Windows, and only x86_64 gets the build that carries the
+    # module. uv reads one metadata view per package during a universal
+    # resolution, so depending on `tensorflow` by name installs the meta
+    # package on Apple Silicon and leaves `import tensorflow` broken. Naming
+    # the concrete distributions keeps every platform on the build that
+    # actually contains the module.
+    "tensorflow-macos==2.13.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "tensorflow==2.13.0; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "tensorflow==2.13.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "tensorflow-cpu-aws==2.13.0; sys_platform == 'linux' and (platform_machine == 'aarch64' or platform_machine == 'arm64')",
+    "tensorflow-intel==2.13.0; sys_platform == 'win32'",
+    "opencv-python>=4.8,<4.12",
+    "face-alignment>=1.4,<1.5",
+    "scikit-image>=0.23,<0.24",
+    "scipy>=1.12,<1.13",
+    "matplotlib>=3.10,<3.11",
+    "pillow>=11.2,<11.3",
+    "PyQt5>=5.15,<5.16",
+]
+
+[tool.uv]
+# The project is a set of top level scripts run from the repository root
+# (`python QTmainV2.py`), not an installable distribution, so uv only manages
+# the environment and never builds or installs this package itself.
+package = false
+
+# TensorFlow 2.13 declares `numpy<=1.24.3` and `typing-extensions<4.6.0`, two
+# caps set by the wheel's own test matrix rather than by any API break.
+# `tensorflow-estimator`, `keras` and the TensorFlow 1.x leftovers are not
+# imported by this project at all, and the previous environment installed a
+# combination that violates both caps only because pip never re-resolved the
+# already satisfied requirements. The project is verified working on
+# numpy 1.26.4 and a current typing-extensions, so the caps are overridden
+# instead of silently downgrading the modern side of the pair.
+override-dependencies = [
+    "numpy>=1.26,<2.0",
+    "typing-extensions>=4.10",
+]
